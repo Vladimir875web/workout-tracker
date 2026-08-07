@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
   Dumbbell, Activity, Plus, ChevronDown, ChevronUp, Save, TrendingUp, Heart, Ruler, Scale,
-  Calendar, Check, Trash2, MessageSquare, X,
+  Calendar, Check, Trash2, X,
 } from "lucide-react";
 
 const PROGRAM_VERSION = 2;
@@ -89,6 +89,12 @@ function useStorage(key, fallback) {
 function useProgram() {
   const [program, persist, loaded] = useStorage("workout-program", null);
 
+  useEffect(() => {
+    if (loaded && (!program || program.version !== PROGRAM_VERSION)) {
+      persist({ version: PROGRAM_VERSION, days: DEFAULT_PROGRAM });
+    }
+  }, [loaded, program, persist]);
+
   const resolved = useMemo(() => {
     if (program && program.version === PROGRAM_VERSION) return program.days;
     return DEFAULT_PROGRAM;
@@ -98,9 +104,7 @@ function useProgram() {
     persist({ version: PROGRAM_VERSION, days });
   };
 
-  const resetToDefault = () => saveProgram(DEFAULT_PROGRAM);
-
-  return [resolved, saveProgram, loaded, resetToDefault];
+  return [resolved, saveProgram, loaded];
 }
 
 function getLastExerciseResult(logs, exerciseName, excludeKey) {
@@ -201,8 +205,12 @@ export default function App() {
           left: 0;
           right: 0;
           z-index: 20;
-          background: linear-gradient(transparent, #15130f 24%);
+          background: linear-gradient(transparent, #15130f 28%);
           padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+          pointer-events: none;
+        }
+        .sticky-save-bar button {
+          pointer-events: auto;
         }
         .sticky-save-inner {
           max-width: 640px;
@@ -482,18 +490,18 @@ function ExerciseCard({ ex, exIdx, onUpdateSet, onAddSet, onRemove, onToggleComm
       ))}
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-        <button onClick={() => onAddSet(exIdx)} style={{
+        <button type="button" onClick={() => onAddSet(exIdx)} style={{
           display: "flex", alignItems: "center", gap: 4, background: "none", border: "none",
           color: "#c98f2f", fontSize: 12.5, fontWeight: 600, padding: "4px 0",
         }}>
           <Plus size={13} /> подход
         </button>
-        <button onClick={onToggleComment} style={{
+        <button type="button" onClick={onToggleComment} title="Комментарий к упражнению" aria-label="Комментарий к упражнению" style={{
           display: "flex", alignItems: "center", gap: 4, background: "none", border: "none",
           color: ex.comment || ex.showComment ? "#8a9e8a" : "#7a7362",
           fontSize: 12.5, fontWeight: 600, padding: "4px 0",
         }}>
-          <MessageSquare size={13} /> комментарий
+          <Plus size={13} /> заметка
         </button>
       </div>
 
