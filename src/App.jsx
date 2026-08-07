@@ -211,14 +211,37 @@ function initSets(day, program, existingEntry, logs, entryKey) {
   });
 }
 
+function applyTelegramSafeArea(tg) {
+  const root = document.documentElement;
+  const safe = tg.safeAreaInset;
+  const content = tg.contentSafeAreaInset;
+
+  if (safe) {
+    root.style.setProperty("--tg-safe-area-inset-top", `${safe.top}px`);
+    root.style.setProperty("--tg-safe-area-inset-bottom", `${safe.bottom}px`);
+    root.style.setProperty("--tg-safe-area-inset-left", `${safe.left}px`);
+    root.style.setProperty("--tg-safe-area-inset-right", `${safe.right}px`);
+  }
+  if (content) {
+    root.style.setProperty("--tg-content-safe-area-inset-top", `${content.top}px`);
+    root.style.setProperty("--tg-content-safe-area-inset-bottom", `${content.bottom}px`);
+    root.style.setProperty("--tg-content-safe-area-inset-left", `${content.left}px`);
+    root.style.setProperty("--tg-content-safe-area-inset-right", `${content.right}px`);
+  }
+}
+
 function initTelegramWebApp() {
   const tg = window.Telegram?.WebApp;
   if (!tg) return;
   tg.ready();
+  applyTelegramSafeArea(tg);
   tg.expand();
   if (typeof tg.requestFullscreen === "function") {
     tg.requestFullscreen();
   }
+  tg.onEvent?.("viewportChanged", () => applyTelegramSafeArea(tg));
+  tg.onEvent?.("safeAreaChanged", () => applyTelegramSafeArea(tg));
+  tg.onEvent?.("contentSafeAreaChanged", () => applyTelegramSafeArea(tg));
 }
 
 export default function App() {
@@ -243,6 +266,25 @@ export default function App() {
           background: #15130f;
           color: #ece6d9;
           font-family: 'Inter', system-ui, sans-serif;
+          padding-left: var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px));
+          padding-right: var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px));
+        }
+        .app-header {
+          border-bottom: 1px solid #2a2620;
+          position: sticky;
+          top: 0;
+          background: #15130f;
+          z-index: 10;
+          padding-top: calc(
+            var(--tg-content-safe-area-inset-top, 0px) +
+            var(--tg-safe-area-inset-top, env(safe-area-inset-top, 20px))
+          );
+        }
+        .app-header-inner {
+          max-width: 640px;
+          margin: 0 auto;
+          padding: 20px 16px 0;
+          width: 100%;
         }
         .display { font-family: 'Bebas Neue', 'Inter', sans-serif; letter-spacing: 0.02em; }
         input[type="number"], input[type="date"], input[type="text"], textarea {
@@ -269,7 +311,11 @@ export default function App() {
           right: 0;
           z-index: 20;
           background: linear-gradient(transparent, #15130f 28%);
-          padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+          padding: 12px 16px calc(
+            12px +
+            var(--tg-content-safe-area-inset-bottom, 0px) +
+            var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+          );
           pointer-events: none;
         }
         .sticky-save-bar button {
@@ -292,8 +338,8 @@ export default function App() {
 
 function Header({ tab, setTab, onExport, onImport }) {
   return (
-    <div style={{ borderBottom: "1px solid #2a2620", position: "sticky", top: 0, background: "#15130f", zIndex: 10 }}>
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 16px 0", width: "100%" }}>
+    <div className="app-header">
+      <div className="app-header-inner">
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span className="display" style={{ fontSize: 34, color: "#e0a940", lineHeight: 1 }}>ЖУРНАЛ</span>

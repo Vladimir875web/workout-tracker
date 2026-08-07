@@ -31,3 +31,12 @@ body {
   min-height: 100dvh;
   isolation: isolate;
 }
+
+:root {
+  --tg-safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --tg-safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --tg-safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --tg-safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --tg-content-safe-area-inset-top: 0px;
+  --tg-content-safe-area-inset-bottom: 0px;
+}
