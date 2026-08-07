@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
-  Dumbbell, Activity, Plus, ChevronDown, ChevronUp, Save, TrendingUp, Heart, Ruler, Scale,
-  Calendar, Check, Trash2, X,
+  Dumbbell, Activity, Plus, ChevronDown, ChevronUp, Save, TrendingUp, Ruler, Scale,
+  Calendar, Check, Trash2, X, Download, Upload, StickyNote,
 } from "lucide-react";
 
 const PROGRAM_VERSION = 2;
@@ -51,6 +51,15 @@ const fmtDate = (iso) => {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
 };
 
+const setVolume = (sets) =>
+  sets.reduce((sum, s) => {
+    const w = parseFloat(s.weight);
+    const r = parseFloat(s.reps);
+    return sum + (isNaN(w) || isNaN(r) ? 0 : w * r);
+  }, 0);
+
+const fmtVol = (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}т` : `${Math.round(v)}кг`);
+
 function parseSetCount(target) {
   const m = String(target).match(/^(\d+)/);
   return m ? parseInt(m[1], 10) : 3;
@@ -84,6 +93,44 @@ function useStorage(key, fallback) {
   };
 
   return [data, persist, loaded];
+}
+
+function exportData() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    workoutLogs: JSON.parse(localStorage.getItem("workout-logs") || "{}"),
+    bodyMetrics: JSON.parse(localStorage.getItem("body-metrics") || "{}"),
+    profile: JSON.parse(localStorage.getItem("user-profile") || "{}"),
+    workoutProgram: JSON.parse(localStorage.getItem("workout-program") || "null"),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `zhurnal-${todayISO()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(onDone) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "application/json,.json";
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.workoutLogs) localStorage.setItem("workout-logs", JSON.stringify(data.workoutLogs));
+      if (data.bodyMetrics) localStorage.setItem("body-metrics", JSON.stringify(data.bodyMetrics));
+      if (data.profile) localStorage.setItem("user-profile", JSON.stringify(data.profile));
+      if (data.workoutProgram) localStorage.setItem("workout-program", JSON.stringify(data.workoutProgram));
+      onDone?.();
+    } catch {
+      alert("Не удалось прочитать файл. Проверь формат JSON.");
+    }
+  };
+  input.click();
 }
 
 function useProgram() {
@@ -164,8 +211,24 @@ function initSets(day, program, existingEntry, logs, entryKey) {
   });
 }
 
+function initTelegramWebApp() {
+  const tg = window.Telegram?.WebApp;
+  if (!tg) return;
+  tg.ready();
+  tg.expand();
+  if (typeof tg.requestFullscreen === "function") {
+    tg.requestFullscreen();
+  }
+}
+
 export default function App() {
   const [tab, setTab] = useState("workout");
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = () => setReloadKey((k) => k + 1);
+
+  useEffect(() => {
+    initTelegramWebApp();
+  }, []);
 
   return (
     <div className="app-root">
@@ -219,28 +282,44 @@ export default function App() {
         }
       `}</style>
 
-      <Header tab={tab} setTab={setTab} />
+      <Header tab={tab} setTab={setTab} onExport={exportData} onImport={() => importData(reload)} />
       <div className="main-content">
-        {tab === "workout" ? <WorkoutTab /> : <MetricsTab />}
+        {tab === "workout" ? <WorkoutTab key={reloadKey} /> : tab === "metrics" ? <MetricsTab key={reloadKey} /> : <ProfileTab key={reloadKey} />}
       </div>
     </div>
   );
 }
 
-function Header({ tab, setTab }) {
+function Header({ tab, setTab, onExport, onImport }) {
   return (
     <div style={{ borderBottom: "1px solid #2a2620", position: "sticky", top: 0, background: "#15130f", zIndex: 10 }}>
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 16px 0", width: "100%" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 16 }}>
-          <span className="display" style={{ fontSize: 34, color: "#e0a940", lineHeight: 1 }}>ЖУРНАЛ</span>
-          <span style={{ fontSize: 13, color: "#7a7362", fontWeight: 500 }}>тренировок и показателей тела</span>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span className="display" style={{ fontSize: 34, color: "#e0a940", lineHeight: 1 }}>ЖУРНАЛ</span>
+            <span style={{ fontSize: 13, color: "#7a7362", fontWeight: 500 }}>тренировок</span>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <IconBtn onClick={onExport} title="Скачать резервную копию"><Download size={16} /></IconBtn>
+            <IconBtn onClick={onImport} title="Загрузить резервную копию"><Upload size={16} /></IconBtn>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
           <TabButton active={tab === "workout"} onClick={() => setTab("workout")} icon={<Dumbbell size={16} />} label="Тренировки" />
           <TabButton active={tab === "metrics"} onClick={() => setTab("metrics")} icon={<Activity size={16} />} label="Показатели" />
+          <TabButton active={tab === "profile"} onClick={() => setTab("profile")} icon={<Scale size={16} />} label="Профиль" />
         </div>
       </div>
     </div>
+  );
+}
+
+function IconBtn({ onClick, title, children }) {
+  return (
+    <button type="button" onClick={onClick} title={title} style={{
+      background: "#211e17", border: "1px solid #3a3527", borderRadius: 6,
+      color: "#a89f88", padding: "6px 8px", display: "flex", alignItems: "center",
+    }}>{children}</button>
   );
 }
 
@@ -273,10 +352,13 @@ function WorkoutTab() {
   const existing = logs[entryKey];
 
   const [sets, setSets] = useState([]);
+  const [notes, setNotes] = useState("");
 
   const reloadSets = useCallback(() => {
     if (!loaded) return;
-    setSets(initSets(day, program, logs[entryKey], logs, entryKey));
+    const entry = logs[entryKey];
+    setSets(initSets(day, program, entry, logs, entryKey));
+    setNotes(entry?.notes ?? "");
   }, [day, date, loaded, program, logs, entryKey]);
 
   useEffect(() => {
@@ -317,11 +399,13 @@ function WorkoutTab() {
   };
 
   const handleSave = () => {
-    const next = { ...logs, [entryKey]: { date, day, exercises: sets } };
+    const next = { ...logs, [entryKey]: { date, day, exercises: sets, notes } };
     persistLogs(next);
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   };
+
+  const totalVolume = sets.reduce((sum, ex) => sum + setVolume(ex.sets), 0);
 
   const removeExercise = (exIdx) => {
     const exName = sets[exIdx].name;
@@ -428,6 +512,25 @@ function WorkoutTab() {
         </button>
       )}
 
+      {totalVolume > 0 && (
+        <div style={{
+          background: "#211e17", border: "1px solid #3a3527", borderRadius: 8,
+          padding: "10px 14px", marginBottom: 10, fontSize: 13, color: "#a89f88",
+          display: "flex", justifyContent: "space-between",
+        }}>
+          <span>Общий тоннаж тренировки</span>
+          <span style={{ color: "#e0a940", fontWeight: 700 }}>{fmtVol(totalVolume)}</span>
+        </div>
+      )}
+
+      <div style={{ background: "#1c1a14", border: "1px solid #2a2620", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, fontSize: 12.5, color: "#a89f88", fontWeight: 600 }}>
+          <StickyNote size={15} color="#e0a940" /> Заметки к тренировке
+        </div>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Самочувствие, боль, что улучшить..."
+          rows={2} style={{ minHeight: 56, resize: "vertical", fontSize: 14 }} />
+      </div>
+
       <button onClick={() => setShowHistory((v) => !v)} style={{
         width: "100%", background: "none", border: "none", color: "#7a7362", fontSize: 13,
         padding: "8px 0 6px", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
@@ -453,11 +556,13 @@ function WorkoutTab() {
 }
 
 function ExerciseCard({ ex, exIdx, onUpdateSet, onAddSet, onRemove, onToggleComment, onUpdateComment }) {
+  const vol = setVolume(ex.sets);
   return (
     <div style={{ background: "#1c1a14", border: "1px solid #2a2620", borderRadius: 10, padding: 14, marginBottom: 10, width: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 15, flex: 1, minWidth: 0, wordBreak: "break-word" }}>{ex.name}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {vol > 0 && <div style={{ fontSize: 12, color: "#c98f2f", fontWeight: 600 }}>{fmtVol(vol)}</div>}
           <div style={{ fontSize: 12, color: "#7a7362" }}>{ex.target}</div>
           <button
             onClick={onRemove}
@@ -580,13 +685,13 @@ function ExerciseProgress({ logs, program }) {
 function MetricsTab() {
   const [metrics, persist, loaded] = useStorage("body-metrics", {});
   const [date, setDate] = useState(todayISO());
-  const [form, setForm] = useState({ weight: "", waist: "", sys: "", dia: "", pulse: "" });
+  const [form, setForm] = useState({ weight: "", waist: "", chest: "", pulse: "" });
 
   useEffect(() => {
     const e = metrics[date];
     setForm({
       weight: e?.weight ?? "", waist: e?.waist ?? "",
-      sys: e?.sys ?? "", dia: e?.dia ?? "", pulse: e?.pulse ?? "",
+      chest: e?.chest ?? "", pulse: e?.pulse ?? "",
     });
   }, [date, loaded]); // eslint-disable-line
 
@@ -606,12 +711,9 @@ function MetricsTab() {
     label: fmtDate(m.date),
     weight: m.weight ? parseFloat(m.weight) : null,
     waist: m.waist ? parseFloat(m.waist) : null,
-    sys: m.sys ? parseFloat(m.sys) : null,
-    dia: m.dia ? parseFloat(m.dia) : null,
+    chest: m.chest ? parseFloat(m.chest) : null,
     pulse: m.pulse ? parseFloat(m.pulse) : null,
   }));
-
-  const isHighBP = form.sys && parseFloat(form.sys) >= 140 || form.dia && parseFloat(form.dia) >= 90;
 
   return (
     <div style={{ width: "100%", overflowX: "hidden" }}>
@@ -627,21 +729,12 @@ function MetricsTab() {
         <FieldRow icon={<Ruler size={15} color="#e0a940" />} label="Талия, см">
           <input type="number" step="0.5" value={form.waist} onChange={(e) => setForm({ ...form, waist: e.target.value })} />
         </FieldRow>
-        <FieldRow icon={<Heart size={15} color="#e0a940" />} label="Давление утро (сист./диаст.)">
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input type="number" placeholder="сист." value={form.sys} onChange={(e) => setForm({ ...form, sys: e.target.value })} />
-            <span style={{ color: "#5a5545" }}>/</span>
-            <input type="number" placeholder="диаст." value={form.dia} onChange={(e) => setForm({ ...form, dia: e.target.value })} />
-          </div>
+        <FieldRow icon={<Ruler size={15} color="#c98f2f" />} label="Грудь, см">
+          <input type="number" step="0.5" value={form.chest} onChange={(e) => setForm({ ...form, chest: e.target.value })} />
         </FieldRow>
         <FieldRow icon={<Activity size={15} color="#e0a940" />} label="Пульс утро, уд/мин">
           <input type="number" value={form.pulse} onChange={(e) => setForm({ ...form, pulse: e.target.value })} />
         </FieldRow>
-        {isHighBP && (
-          <div style={{ fontSize: 12.5, color: "#e2795a", background: "#2a1c16", border: "1px solid #4a2e20", borderRadius: 6, padding: "8px 10px", marginTop: 4 }}>
-            Давление выше нормы (140/90) — стоит проконсультироваться с врачом.
-          </div>
-        )}
       </div>
 
       <button onClick={handleSave} style={{
@@ -656,7 +749,7 @@ function MetricsTab() {
         <>
           <ChartBlock title="Вес, кг" data={chartData} dataKey="weight" color="#e0a940" />
           <ChartBlock title="Талия, см" data={chartData} dataKey="waist" color="#7fb3c9" />
-          <ChartBlock title="Давление, сист./диаст." data={chartData} dataKey="sys" secondKey="dia" color="#e2795a" secondColor="#c98f2f" refLine={140} refLine2={90} />
+          <ChartBlock title="Грудь, см" data={chartData} dataKey="chest" color="#c98f2f" />
           <ChartBlock title="Пульс, уд/мин" data={chartData} dataKey="pulse" color="#8a9e8a" refLine={90} />
         </>
       )}
@@ -673,7 +766,7 @@ function MetricsTab() {
                 <span style={{ color: "#ece6d9", fontWeight: 600 }}>{fmtDate(m.date)}</span>
                 <span>{m.weight ? `${m.weight}кг` : "—"}</span>
                 <span>{m.waist ? `${m.waist}см` : "—"}</span>
-                <span>{m.sys && m.dia ? `${m.sys}/${m.dia}` : "—"}</span>
+                <span>{m.chest ? `${m.chest}см` : "—"}</span>
                 <span>{m.pulse ? `${m.pulse}уд` : "—"}</span>
               </div>
             ))}
@@ -711,6 +804,132 @@ function ChartBlock({ title, data, dataKey, secondKey, color, secondColor, refLi
           {secondKey && <Line type="monotone" dataKey={secondKey} stroke={secondColor} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />}
         </LineChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* ---------------- PROFILE TAB ---------------- */
+
+function ProfileTab() {
+  const [profile, persist, loaded] = useStorage("user-profile", {
+    name: "", height: "", birthYear: "", goal: "", targetWeight: "", notes: "",
+  });
+  const [program] = useProgram();
+  const [form, setForm] = useState(profile);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (loaded) setForm(profile);
+  }, [loaded, profile]);
+
+  const handleSave = () => {
+    persist(form);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
+
+  const latestWeight = useMemo(() => {
+    try {
+      const metrics = JSON.parse(localStorage.getItem("body-metrics") || "{}");
+      const sorted = Object.values(metrics).sort((a, b) => (a.date > b.date ? 1 : -1));
+      const last = sorted.filter((m) => m.weight).pop();
+      return last ? parseFloat(last.weight) : null;
+    } catch { return null; }
+  }, [saved, loaded]);
+
+  const computedBmi = latestWeight && form.height
+    ? (latestWeight / Math.pow(parseFloat(form.height) / 100, 2)).toFixed(1)
+    : null;
+
+  const workoutCount = useMemo(() => {
+    try {
+      const logs = JSON.parse(localStorage.getItem("workout-logs") || "{}");
+      return Object.keys(logs).length;
+    } catch { return 0; }
+  }, [saved, loaded]);
+
+  return (
+    <div style={{ width: "100%", overflowX: "hidden" }}>
+      <div style={{ margin: "18px 0 14px", fontSize: 13, color: "#7a7362" }}>
+        Базовые параметры — заполни один раз, обновляй по необходимости.
+      </div>
+
+      <div style={{ background: "#1c1a14", border: "1px solid #2a2620", borderRadius: 10, padding: 16, marginBottom: 14 }}>
+        <FieldRow icon={<Scale size={15} color="#e0a940" />} label="Имя (опц.)">
+          <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="Как к тебе обращаться" />
+        </FieldRow>
+        <FieldRow icon={<Ruler size={15} color="#e0a940" />} label="Рост, см">
+          <input type="number" value={form.height} onChange={(e) => setForm({ ...form, height: e.target.value })} />
+        </FieldRow>
+        <FieldRow icon={<Calendar size={15} color="#e0a940" />} label="Год рождения (опц.)">
+          <input type="number" value={form.birthYear} onChange={(e) => setForm({ ...form, birthYear: e.target.value })} />
+        </FieldRow>
+        <FieldRow icon={<TrendingUp size={15} color="#e0a940" />} label="Цель">
+          <input type="text" value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })}
+            placeholder="Набрать массу / сбросить жир / сила..." />
+        </FieldRow>
+        <FieldRow icon={<Scale size={15} color="#7fb3c9" />} label="Целевой вес, кг">
+          <input type="number" step="0.1" value={form.targetWeight} onChange={(e) => setForm({ ...form, targetWeight: e.target.value })} />
+        </FieldRow>
+        <FieldRow icon={<StickyNote size={15} color="#8a9e8a" />} label="Заметки">
+          <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            placeholder="Травмы, ограничения, добавки..." rows={2} style={{ minHeight: 56, resize: "vertical" }} />
+        </FieldRow>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+        <StatCard label="Тренировок" value={workoutCount || "—"} />
+        <StatCard label="BMI" value={computedBmi || "—"} hint={computedBmi ? bmiLabel(computedBmi) : "нужен рост + вес"} />
+        <StatCard label="Цель" value={form.targetWeight ? `${form.targetWeight}кг` : "—"} />
+      </div>
+
+      <button onClick={handleSave} style={{
+        width: "100%", padding: "14px 0", borderRadius: 10, border: "none",
+        background: saved ? "#4a7a5a" : "#e0a940", color: "#15130f", fontWeight: 800, fontSize: 15,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+      }}>
+        {saved ? <><Check size={17} /> Сохранено</> : <><Save size={17} /> Сохранить профиль</>}
+      </button>
+
+      <ProgramCard program={program} />
+    </div>
+  );
+}
+
+function StatCard({ label, value, hint }) {
+  return (
+    <div style={{ background: "#1c1a14", border: "1px solid #2a2620", borderRadius: 8, padding: "12px 10px", textAlign: "center" }}>
+      <div style={{ fontSize: 11, color: "#7a7362", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: "#e0a940" }}>{value}</div>
+      {hint && <div style={{ fontSize: 10, color: "#5a5545", marginTop: 2 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function bmiLabel(bmi) {
+  const v = parseFloat(bmi);
+  if (v < 18.5) return "недовес";
+  if (v < 25) return "норма";
+  if (v < 30) return "избыток";
+  return "ожирение";
+}
+
+function ProgramCard({ program }) {
+  return (
+    <div style={{ marginTop: 20, marginBottom: 24 }}>
+      <div style={{ fontSize: 12.5, color: "#7a7362", marginBottom: 10, fontWeight: 600 }}>ТВОЯ ПРОГРАММА</div>
+      {Object.entries(program).map(([day, info]) => (
+        <div key={day} style={{ background: "#1c1a14", border: "1px solid #2a2620", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+          <div className="display" style={{ fontSize: 18, color: "#e0a940", marginBottom: 4 }}>{day} — {info.title}</div>
+          {info.exercises.map((ex, i) => (
+            <div key={i} style={{ fontSize: 12.5, color: "#a89f88", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ minWidth: 0, wordBreak: "break-word" }}>{i + 1}. {ex.name}</span>
+              <span style={{ color: "#7a7362", flexShrink: 0 }}>{ex.target}</span>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
