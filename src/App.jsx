@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
-  Dumbbell, Activity, Plus, ChevronDown, ChevronUp, Save, TrendingUp, Heart, Ruler, Scale,
+  Dumbbell, Activity, Plus, ChevronDown, ChevronUp, Save, TrendingUp, Ruler, Scale,
   Calendar, Check, Trash2, X, Download, Upload, StickyNote,
 } from "lucide-react";
 
@@ -211,10 +211,24 @@ function initSets(day, program, existingEntry, logs, entryKey) {
   });
 }
 
+function initTelegramWebApp() {
+  const tg = window.Telegram?.WebApp;
+  if (!tg) return;
+  tg.ready();
+  tg.expand();
+  if (typeof tg.requestFullscreen === "function") {
+    tg.requestFullscreen();
+  }
+}
+
 export default function App() {
   const [tab, setTab] = useState("workout");
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((k) => k + 1);
+
+  useEffect(() => {
+    initTelegramWebApp();
+  }, []);
 
   return (
     <div className="app-root">
@@ -671,13 +685,13 @@ function ExerciseProgress({ logs, program }) {
 function MetricsTab() {
   const [metrics, persist, loaded] = useStorage("body-metrics", {});
   const [date, setDate] = useState(todayISO());
-  const [form, setForm] = useState({ weight: "", waist: "", sys: "", dia: "", pulse: "" });
+  const [form, setForm] = useState({ weight: "", waist: "", chest: "", pulse: "" });
 
   useEffect(() => {
     const e = metrics[date];
     setForm({
       weight: e?.weight ?? "", waist: e?.waist ?? "",
-      sys: e?.sys ?? "", dia: e?.dia ?? "", pulse: e?.pulse ?? "",
+      chest: e?.chest ?? "", pulse: e?.pulse ?? "",
     });
   }, [date, loaded]); // eslint-disable-line
 
@@ -697,12 +711,9 @@ function MetricsTab() {
     label: fmtDate(m.date),
     weight: m.weight ? parseFloat(m.weight) : null,
     waist: m.waist ? parseFloat(m.waist) : null,
-    sys: m.sys ? parseFloat(m.sys) : null,
-    dia: m.dia ? parseFloat(m.dia) : null,
+    chest: m.chest ? parseFloat(m.chest) : null,
     pulse: m.pulse ? parseFloat(m.pulse) : null,
   }));
-
-  const isHighBP = form.sys && parseFloat(form.sys) >= 140 || form.dia && parseFloat(form.dia) >= 90;
 
   return (
     <div style={{ width: "100%", overflowX: "hidden" }}>
@@ -718,21 +729,12 @@ function MetricsTab() {
         <FieldRow icon={<Ruler size={15} color="#e0a940" />} label="Талия, см">
           <input type="number" step="0.5" value={form.waist} onChange={(e) => setForm({ ...form, waist: e.target.value })} />
         </FieldRow>
-        <FieldRow icon={<Heart size={15} color="#e0a940" />} label="Давление утро (сист./диаст.)">
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input type="number" placeholder="сист." value={form.sys} onChange={(e) => setForm({ ...form, sys: e.target.value })} />
-            <span style={{ color: "#5a5545" }}>/</span>
-            <input type="number" placeholder="диаст." value={form.dia} onChange={(e) => setForm({ ...form, dia: e.target.value })} />
-          </div>
+        <FieldRow icon={<Ruler size={15} color="#c98f2f" />} label="Грудь, см">
+          <input type="number" step="0.5" value={form.chest} onChange={(e) => setForm({ ...form, chest: e.target.value })} />
         </FieldRow>
         <FieldRow icon={<Activity size={15} color="#e0a940" />} label="Пульс утро, уд/мин">
           <input type="number" value={form.pulse} onChange={(e) => setForm({ ...form, pulse: e.target.value })} />
         </FieldRow>
-        {isHighBP && (
-          <div style={{ fontSize: 12.5, color: "#e2795a", background: "#2a1c16", border: "1px solid #4a2e20", borderRadius: 6, padding: "8px 10px", marginTop: 4 }}>
-            Давление выше нормы (140/90) — стоит проконсультироваться с врачом.
-          </div>
-        )}
       </div>
 
       <button onClick={handleSave} style={{
@@ -747,7 +749,7 @@ function MetricsTab() {
         <>
           <ChartBlock title="Вес, кг" data={chartData} dataKey="weight" color="#e0a940" />
           <ChartBlock title="Талия, см" data={chartData} dataKey="waist" color="#7fb3c9" />
-          <ChartBlock title="Давление, сист./диаст." data={chartData} dataKey="sys" secondKey="dia" color="#e2795a" secondColor="#c98f2f" refLine={140} refLine2={90} />
+          <ChartBlock title="Грудь, см" data={chartData} dataKey="chest" color="#c98f2f" />
           <ChartBlock title="Пульс, уд/мин" data={chartData} dataKey="pulse" color="#8a9e8a" refLine={90} />
         </>
       )}
@@ -764,7 +766,7 @@ function MetricsTab() {
                 <span style={{ color: "#ece6d9", fontWeight: 600 }}>{fmtDate(m.date)}</span>
                 <span>{m.weight ? `${m.weight}кг` : "—"}</span>
                 <span>{m.waist ? `${m.waist}см` : "—"}</span>
-                <span>{m.sys && m.dia ? `${m.sys}/${m.dia}` : "—"}</span>
+                <span>{m.chest ? `${m.chest}см` : "—"}</span>
                 <span>{m.pulse ? `${m.pulse}уд` : "—"}</span>
               </div>
             ))}
