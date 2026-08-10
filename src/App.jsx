@@ -9,7 +9,6 @@ const PROGRAM_VERSION = 2;
 
 const DEFAULT_PROGRAM = {
   "Пн": {
-    title: "Свежие плечи + База",
     exercises: [
       { name: "Махи гантелями в стороны", target: "4×12–15" },
       { name: "Жим ногами в тренажере", target: "3×10–12" },
@@ -20,7 +19,6 @@ const DEFAULT_PROGRAM = {
     ],
   },
   "Ср": {
-    title: "3D-плечи + Брахиалис + Спина",
     exercises: [
       { name: "Жим гантелей на накл. (30°)", target: "3×8–10" },
       { name: "Махи в наклоне / Бабочка", target: "3×12–15" },
@@ -31,7 +29,6 @@ const DEFAULT_PROGRAM = {
     ],
   },
   "Пт": {
-    title: "Плечи + Суперобъём на руки",
     exercises: [
       { name: "Приседания (Смит / Гоблет)", target: "3×10–12" },
       { name: "Жим гантелей сидя (плечи)", target: "3×10–12" },
@@ -499,10 +496,7 @@ function WorkoutTab() {
         ))}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-        <div className="display" style={{ fontSize: 22, color: "#ece6d9" }}>{program[day].title}</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18, marginTop: 4 }}>
         <Calendar size={15} color="#7a7362" />
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 150 }} />
       </div>
@@ -967,7 +961,7 @@ function ProgramCard({ program }) {
       <div style={{ fontSize: 12.5, color: "#7a7362", marginBottom: 10, fontWeight: 600 }}>ТВОЯ ПРОГРАММА</div>
       {Object.entries(program).map(([day, info]) => (
         <div key={day} style={{ background: "#1c1a14", border: "1px solid #2a2620", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-          <div className="display" style={{ fontSize: 18, color: "#e0a940", marginBottom: 4 }}>{day} — {info.title}</div>
+          <div className="display" style={{ fontSize: 18, color: "#e0a940", marginBottom: 4 }}>{day}</div>
           {info.exercises.map((ex, i) => (
             <div key={i} style={{ fontSize: 12.5, color: "#a89f88", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 8 }}>
               <span style={{ minWidth: 0, wordBreak: "break-word" }}>{i + 1}. {ex.name}</span>
