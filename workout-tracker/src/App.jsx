@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
   Dumbbell, Activity, Plus, ChevronDown, ChevronUp, Save, TrendingUp, Ruler, Scale,
-  Calendar, Check, Trash2, X, Download, Upload, StickyNote,
+  Calendar, Check, Trash2, X, Download, Upload, StickyNote, GripVertical, Minus,
 } from "lucide-react";
 
 const PROGRAM_VERSION = 2;
@@ -56,6 +56,17 @@ const setVolume = (sets) =>
   }, 0);
 
 const fmtVol = (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}т` : `${Math.round(v)}кг`);
+
+function reorderList(list, from, to) {
+  const next = [...list];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+function programExercisesFromSets(exerciseSets) {
+  return exerciseSets.map((ex) => ({ name: ex.name, target: ex.target }));
+}
 
 function parseSetCount(target) {
   const m = String(target).match(/^(\d+)/);
@@ -323,6 +334,53 @@ export default function App() {
           margin: 0 auto;
           width: 100%;
         }
+        .exercise-card {
+          background: #1c1a14;
+          border: 1px solid #2a2620;
+          border-radius: 10px;
+          padding: 14px;
+          margin-bottom: 10px;
+          width: 100%;
+          transition: border-color 0.15s, opacity 0.15s;
+        }
+        .exercise-card.dragging {
+          opacity: 0.55;
+        }
+        .exercise-card.drag-over {
+          border-color: #e0a940;
+        }
+        .exercise-drag-handle {
+          touch-action: none;
+          cursor: grab;
+          background: none;
+          border: none;
+          color: #5a5545;
+          padding: 2px 4px 2px 0;
+          display: flex;
+          align-items: center;
+          flex-shrink: 0;
+        }
+        .exercise-drag-handle:active {
+          cursor: grabbing;
+        }
+        .exercise-name-input {
+          font-weight: 700;
+          font-size: 15px;
+          padding: 6px 8px;
+        }
+        .set-remove-btn {
+          background: none;
+          border: none;
+          color: #5a5545;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          flex-shrink: 0;
+        }
+        .set-remove-btn:disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
+        }
       `}</style>
 
       <Header tab={tab} setTab={setTab} onExport={exportData} onImport={() => importData(reload)} />
@@ -396,6 +454,19 @@ function WorkoutTab() {
 
   const [sets, setSets] = useState([]);
   const [notes, setNotes] = useState("");
+  const [dragFrom, setDragFrom] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+  const dragPointerId = useRef(null);
+
+  const syncProgram = useCallback((nextSets) => {
+    saveProgram({
+      ...program,
+      [day]: {
+        ...program[day],
+        exercises: programExercisesFromSets(nextSets),
+      },
+    });
+  }, [program, day, saveProgram]);
 
   const reloadSets = useCallback(() => {
     if (!loaded) return;
@@ -425,6 +496,67 @@ function WorkoutTab() {
     });
   };
 
+  const removeSet = (exIdx, setIdx) => {
+    setSets((prev) => {
+      const next = [...prev];
+      const currentSets = next[exIdx].sets;
+      if (currentSets.length <= 1) return prev;
+      next[exIdx] = {
+        ...next[exIdx],
+        sets: currentSets.filter((_, i) => i !== setIdx),
+      };
+      return next;
+    });
+  };
+
+  const updateExerciseName = (exIdx, name) => {
+    setSets((prev) => {
+      const next = [...prev];
+      next[exIdx] = { ...next[exIdx], name };
+      syncProgram(next);
+      return next;
+    });
+  };
+
+  const reorderExercises = (from, to) => {
+    if (from === to || from == null || to == null) return;
+    setSets((prev) => {
+      const next = reorderList(prev, from, to);
+      syncProgram(next);
+      return next;
+    });
+  };
+
+  const finishDrag = (toIdx) => {
+    if (dragFrom != null && toIdx != null && dragFrom !== toIdx) {
+      reorderExercises(dragFrom, toIdx);
+    }
+    dragPointerId.current = null;
+    setDragFrom(null);
+    setDragOver(null);
+  };
+
+  const handleDragPointerDown = (e, idx) => {
+    e.preventDefault();
+    dragPointerId.current = e.pointerId;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragFrom(idx);
+    setDragOver(idx);
+  };
+
+  const handleDragPointerMove = (e) => {
+    if (dragPointerId.current !== e.pointerId || dragFrom == null) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const card = el?.closest("[data-exercise-card]");
+    if (!card) return;
+    setDragOver(Number(card.dataset.exIdx));
+  };
+
+  const handleDragPointerUp = (e) => {
+    if (dragPointerId.current !== e.pointerId) return;
+    finishDrag(dragOver ?? dragFrom);
+  };
+
   const updateComment = (exIdx, value) => {
     setSets((prev) => {
       const next = [...prev];
@@ -451,16 +583,9 @@ function WorkoutTab() {
   const totalVolume = sets.reduce((sum, ex) => sum + setVolume(ex.sets), 0);
 
   const removeExercise = (exIdx) => {
-    const exName = sets[exIdx].name;
-    const nextProgram = {
-      ...program,
-      [day]: {
-        ...program[day],
-        exercises: program[day].exercises.filter((e) => e.name !== exName),
-      },
-    };
-    saveProgram(nextProgram);
-    setSets((prev) => prev.filter((_, i) => i !== exIdx));
+    const nextSets = sets.filter((_, i) => i !== exIdx);
+    setSets(nextSets);
+    syncProgram(nextSets);
   };
 
   const addExercise = () => {
@@ -503,14 +628,24 @@ function WorkoutTab() {
 
       {sets.map((ex, exIdx) => (
         <ExerciseCard
-          key={`${day}-${ex.name}-${exIdx}`}
+          key={`${day}-ex-${exIdx}`}
           ex={ex}
           exIdx={exIdx}
+          isDragging={dragFrom === exIdx}
+          isDragOver={dragOver === exIdx && dragFrom !== exIdx}
           onUpdateSet={updateSet}
           onAddSet={addSet}
+          onRemoveSet={removeSet}
+          onUpdateName={updateExerciseName}
           onRemove={() => removeExercise(exIdx)}
           onToggleComment={() => toggleComment(exIdx)}
           onUpdateComment={(v) => updateComment(exIdx, v)}
+          onDragPointerDown={handleDragPointerDown}
+          onDragPointerMove={handleDragPointerMove}
+          onDragPointerUp={handleDragPointerUp}
+          onDragEnter={() => {
+            if (dragFrom != null) setDragOver(exIdx);
+          }}
         />
       ))}
 
@@ -595,16 +730,46 @@ function WorkoutTab() {
   );
 }
 
-function ExerciseCard({ ex, exIdx, onUpdateSet, onAddSet, onRemove, onToggleComment, onUpdateComment }) {
+function ExerciseCard({
+  ex, exIdx, isDragging, isDragOver, onUpdateSet, onAddSet, onRemoveSet,
+  onUpdateName, onRemove, onToggleComment, onUpdateComment,
+  onDragPointerDown, onDragPointerMove, onDragPointerUp, onDragEnter,
+}) {
   const vol = setVolume(ex.sets);
   return (
-    <div style={{ background: "#1c1a14", border: "1px solid #2a2620", borderRadius: 10, padding: 14, marginBottom: 10, width: "100%" }}>
+    <div
+      data-exercise-card
+      data-ex-idx={exIdx}
+      className={`exercise-card${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
+      onPointerEnter={onDragEnter}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, flex: 1, minWidth: 0, wordBreak: "break-word" }}>{ex.name}</div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 4, flex: 1, minWidth: 0 }}>
+          <button
+            type="button"
+            className="exercise-drag-handle"
+            title="Перетащить"
+            aria-label="Перетащить упражнение"
+            onPointerDown={(e) => onDragPointerDown(e, exIdx)}
+            onPointerMove={onDragPointerMove}
+            onPointerUp={onDragPointerUp}
+            onPointerCancel={onDragPointerUp}
+          >
+            <GripVertical size={16} />
+          </button>
+          <input
+            type="text"
+            className="exercise-name-input"
+            value={ex.name}
+            onChange={(e) => onUpdateName(exIdx, e.target.value)}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {vol > 0 && <div style={{ fontSize: 12, color: "#c98f2f", fontWeight: 600 }}>{fmtVol(vol)}</div>}
           <div style={{ fontSize: 12, color: "#7a7362" }}>{ex.target}</div>
           <button
+            type="button"
             onClick={onRemove}
             title="Удалить упражнение"
             style={{
@@ -631,6 +796,16 @@ function ExerciseCard({ ex, exIdx, onUpdateSet, onAddSet, onRemove, onToggleComm
           <span style={{ color: "#5a5545", flexShrink: 0 }}>×</span>
           <input type="number" placeholder="повт" value={s.reps}
             onChange={(e) => onUpdateSet(exIdx, setIdx, "reps", e.target.value)} />
+          <button
+            type="button"
+            className="set-remove-btn"
+            title="Удалить подход"
+            aria-label="Удалить подход"
+            disabled={ex.sets.length <= 1}
+            onClick={() => onRemoveSet(exIdx, setIdx)}
+          >
+            <Minus size={14} />
+          </button>
         </div>
       ))}
 
