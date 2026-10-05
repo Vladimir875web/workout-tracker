@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
   Dumbbell, Activity, Plus, ChevronDown, ChevronUp, Save, TrendingUp, Ruler, Scale,
-  Calendar, Check, Trash2, X, Download, Upload, StickyNote, GripVertical, Minus,
+  Calendar, Check, Trash2, X, Download, Upload, StickyNote, GripVertical, Minus, Utensils,
 } from "lucide-react";
+import { FOOD_GROUPS } from "./foods.js";
 
 const PROGRAM_VERSION = 2;
 
@@ -56,6 +57,26 @@ const setVolume = (sets) =>
   }, 0);
 
 const fmtVol = (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}т` : `${Math.round(v)}кг`);
+
+const METRIC_COLORS = ["#e0a940", "#7fb3c9", "#c98f2f", "#8a9e8a", "#e2795a", "#a89f88", "#6db3a0"];
+
+const DEFAULT_METRIC_FIELDS = [
+  { id: "weight", label: "Вес", unit: "кг" },
+  { id: "waist", label: "Талия", unit: "см" },
+  { id: "chest", label: "Грудь", unit: "см" },
+  { id: "pulse", label: "Пульс утро", unit: "уд/мин" },
+];
+
+const emptyKbju = () => ({ kcal: "", p: "", f: "", c: "" });
+const n = (v) => {
+  const x = parseFloat(v);
+  return isNaN(x) ? 0 : x;
+};
+const fmtN = (v) => {
+  const x = Number(v);
+  if (!isFinite(x) || x === 0) return "0";
+  return Number.isInteger(x) ? String(x) : x.toFixed(1).replace(/\.0$/, "");
+};
 
 function reorderList(list, from, to) {
   const next = [...list];
@@ -110,6 +131,8 @@ function exportData() {
     bodyMetrics: JSON.parse(localStorage.getItem("body-metrics") || "{}"),
     profile: JSON.parse(localStorage.getItem("user-profile") || "{}"),
     workoutProgram: JSON.parse(localStorage.getItem("workout-program") || "null"),
+    metricFields: JSON.parse(localStorage.getItem("metric-fields") || "null"),
+    kbjuLogs: JSON.parse(localStorage.getItem("kbju-logs") || "{}"),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -133,6 +156,8 @@ function importData(onDone) {
       if (data.bodyMetrics) localStorage.setItem("body-metrics", JSON.stringify(data.bodyMetrics));
       if (data.profile) localStorage.setItem("user-profile", JSON.stringify(data.profile));
       if (data.workoutProgram) localStorage.setItem("workout-program", JSON.stringify(data.workoutProgram));
+      if (data.metricFields) localStorage.setItem("metric-fields", JSON.stringify(data.metricFields));
+      if (data.kbjuLogs) localStorage.setItem("kbju-logs", JSON.stringify(data.kbjuLogs));
       onDone?.();
     } catch {
       alert("Не удалось прочитать файл. Проверь формат JSON.");
@@ -385,7 +410,10 @@ export default function App() {
 
       <Header tab={tab} setTab={setTab} onExport={exportData} onImport={() => importData(reload)} />
       <div className="main-content">
-        {tab === "workout" ? <WorkoutTab key={reloadKey} /> : tab === "metrics" ? <MetricsTab key={reloadKey} /> : <ProfileTab key={reloadKey} />}
+        {tab === "workout" ? <WorkoutTab key={reloadKey} />
+          : tab === "nutrition" ? <NutritionTab key={reloadKey} />
+          : tab === "metrics" ? <MetricsTab key={reloadKey} />
+          : <ProfileTab key={reloadKey} />}
       </div>
     </div>
   );
@@ -405,10 +433,11 @@ function Header({ tab, setTab, onExport, onImport }) {
             <IconBtn onClick={onImport} title="Загрузить резервную копию"><Upload size={16} /></IconBtn>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          <TabButton active={tab === "workout"} onClick={() => setTab("workout")} icon={<Dumbbell size={16} />} label="Тренировки" />
-          <TabButton active={tab === "metrics"} onClick={() => setTab("metrics")} icon={<Activity size={16} />} label="Показатели" />
-          <TabButton active={tab === "profile"} onClick={() => setTab("profile")} icon={<Scale size={16} />} label="Профиль" />
+        <div style={{ display: "flex", gap: 2, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <TabButton active={tab === "workout"} onClick={() => setTab("workout")} icon={<Dumbbell size={15} />} label="Тренировки" />
+          <TabButton active={tab === "nutrition"} onClick={() => setTab("nutrition")} icon={<Utensils size={15} />} label="КБЖУ" />
+          <TabButton active={tab === "metrics"} onClick={() => setTab("metrics")} icon={<Activity size={15} />} label="Показатели" />
+          <TabButton active={tab === "profile"} onClick={() => setTab("profile")} icon={<Scale size={15} />} label="Профиль" />
         </div>
       </div>
     </div>
@@ -427,9 +456,10 @@ function IconBtn({ onClick, title, children }) {
 function TabButton({ active, onClick, icon, label }) {
   return (
     <button onClick={onClick} style={{
-      display: "flex", alignItems: "center", gap: 7, padding: "10px 16px",
+      display: "flex", alignItems: "center", gap: 6, padding: "10px 11px",
       background: "transparent", border: "none", borderBottom: active ? "2px solid #e0a940" : "2px solid transparent",
-      color: active ? "#e0a940" : "#7a7362", fontWeight: 600, fontSize: 14.5, transition: "color .15s",
+      color: active ? "#e0a940" : "#7a7362", fontWeight: 600, fontSize: 13.5, transition: "color .15s",
+      whiteSpace: "nowrap", flexShrink: 0,
     }}>
       {icon}{label}
     </button>
